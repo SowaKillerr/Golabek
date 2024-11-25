@@ -6,8 +6,9 @@
 const char* ssid = "Internet_Domowy_88749A";            // Nazwa sieci WiFi
 const char* password = "AF345AE5";           // Hasło do sieci WiFi
 const char* token = "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";
-const char* repoUrl = "https://sowakillerr.github.io/Golabek/messages.json";
+const char* repoUrl = "https://sowakillerr.github.io/Golabek/root/messages.json";
 
+// Flaga wskazująca, czy wysłano wiadomość
 bool messageSent = false;
 
 // Funkcja kodowania wiadomości do Base64
@@ -35,10 +36,14 @@ void sendMessage(const String& sender, const String& message) {
     // Payload
     String payload = "{\"message\": \"Wysłano wiadomość\", \"content\": \"" + encodedMessage + "\", \"branch\": \"main\"}";
 
-    int httpResponseCode = http.PUT(payload);
+    // Zmieniamy metodę na POST, aby dodać nowy plik w repozytorium
+    int httpResponseCode = http.POST(payload);  // Zmieniamy metodę na POST
 
     if (httpResponseCode > 0) {
         Serial.println("Wiadomość wysłana! Kod odpowiedzi: " + String(httpResponseCode));
+        String response = http.getString();
+        Serial.println("Odpowiedź serwera:");
+        Serial.println(response);  // Dodajemy wydruk odpowiedzi, żeby sprawdzić, co zwrócił serwer
     } else {
         Serial.println("Błąd wysyłania wiadomości: " + String(httpResponseCode));
     }
