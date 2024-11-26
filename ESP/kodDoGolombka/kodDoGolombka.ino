@@ -1,125 +1,122 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Base64.h>
+#include <base64.h>
 
 const char* ssid = "Internet_Domowy_88749A";            // Nazwa sieci WiFi
 const char* password = "AF345AE5";           // Hasło do sieci WiFi
-const char* token = "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";
-const char* repoUrl = "https://sowakillerr.github.io/Golabek/root/messages.json";
+const char* githubToken  = "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";
 
-// Flaga wskazująca, czy wysłano wiadomość
-bool messageSent = false;
 
-// Funkcja kodowania wiadomości do Base64
-String encodeBase64(const String& input) {
-    String encodedStr = base64::encode(input);  // Używamy funkcji base64 z biblioteki Base64.h
-    return encodedStr;
-}
+// Adres serwera z plikiem JSON
+const char* serverUrl = "https://sowakillerr.github.io/Golabek/message.json";
 
-// Funkcja wysyłania wiadomości
-void sendMessage(const String& sender, const String& message) {
-    Serial.println("Wysyłanie wiadomości...");
+// Unikalna nazwa urządzenia (ESP1, ESP2)
+const char* DEVICE_NAME = "ESP2"; // Zmień na "ESP2" dla drugiego ESP
 
-    // Przygotowanie zapytania HTTP
-    HTTPClient http;
-    http.begin(repoUrl);
-    http.addHeader("Authorization", "Bearer " + String(token));
-    http.addHeader("Content-Type", "application/json");
+// Ostatnia wiadomość odebrana z serwera
+String lastMessage = "";
 
-    // Treść wiadomości
-    String json = "{\"sender\": \"" + sender + "\", \"message\": \"" + message + "\"}";
-
-    // Zakodowanie treści w Base64 (wymagane przez GitHub API)
-    String encodedMessage = encodeBase64(json);
-
-    // Payload
-    String payload = "{\"message\": \"Wysłano wiadomość\", \"content\": \"" + encodedMessage + "\", \"branch\": \"main\"}";
-
-    // Zmieniamy metodę na POST, aby dodać nowy plik w repozytorium
-    int httpResponseCode = http.POST(payload);  // Zmieniamy metodę na POST
-
-    if (httpResponseCode > 0) {
-        Serial.println("Wiadomość wysłana! Kod odpowiedzi: " + String(httpResponseCode));
-        String response = http.getString();
-        Serial.println("Odpowiedź serwera:");
-        Serial.println(response);  // Dodajemy wydruk odpowiedzi, żeby sprawdzić, co zwrócił serwer
-    } else {
-        Serial.println("Błąd wysyłania wiadomości: " + String(httpResponseCode));
-    }
-
-    http.end();
-    messageSent = true;
-}
-
-// Funkcja odbierania wiadomości
-void receiveMessage() {
-    Serial.println("Nasłuchiwanie wiadomości...");
-
-    HTTPClient http;
-    http.begin(repoUrl);
-    http.addHeader("Authorization", "Bearer " + String(token));
-
-    int httpResponseCode = http.GET();
-
-    if (httpResponseCode > 0) {
-        String response = http.getString();
-        Serial.println("Otrzymano odpowiedź z serwera:");
-        Serial.println(response);
-
-        // Parsowanie JSON
-        DynamicJsonDocument doc(1024);
-        DeserializationError error = deserializeJson(doc, response);
-
-        if (error) {
-            Serial.println("Błąd parsowania JSON!");
-            return;
-        }
-
-        // Sprawdzanie zawartości wiadomości
-        String sender = doc["sender"];
-        String message = doc["message"];
-
-        if (message != "") {
-            Serial.println("Nowa wiadomość od: " + sender);
-            Serial.println("Treść: " + message);
-
-            // Usuwanie wiadomości po odczytaniu
-            sendMessage("", "");
-        }
-    } else {
-        Serial.println("Błąd odbierania danych: " + String(httpResponseCode));
-    }
-
-    http.end();
+String encodeBase64(const String& data) {
+  // Kodowanie danych na Base64
+  String encodedData = base64::encode((const uint8_t*)data.c_str(), data.length());
+  return encodedData;
 }
 
 void setup() {
-    Serial.begin(115200);
+  Serial.begin(115200);
 
-    // Połączenie z WiFi
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.println("Łączenie z WiFi...");
-    }
-    Serial.println("Połączono z WiFi!");
+  // Połączenie z WiFi
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.println("Łączenie z WiFi...");
+  }
+  Serial.println("Połączono z WiFi");
 }
 
 void loop() {
-    // Odczyt danych z Serial Monitora
-    if (Serial.available() > 0) {
-        String message = Serial.readStringUntil('\n');
-        message.trim(); // Usuń białe znaki (np. nową linię)
+  // Odbieranie wiadomości z serwera
+  receiveMessage();
 
-        if (message.length() > 0) {
-            sendMessage("ESP1", message); // Wyślij wiadomość
-        }
+  // Sprawdzenie, czy jest nowa wiadomość do wysłania
+  if (Serial.available() > 0) {
+    String message = Serial.readString();
+    sendMessage(DEVICE_NAME, message);
+  }
+
+  delay(5000); // Odczekaj 5 sekund przed kolejną operacją
+}
+
+// Funkcja do wysyłania wiadomości na serwer
+void sendMessage(const char* sender, const String& message) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+
+    // Adres API GitHub
+    const char* apiUrl = "https://api.github.com/repos/<username>/<repo>/contents/Golabek/message.json";
+
+    // Inicjalizacja HTTP
+    http.begin(apiUrl);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Authorization", "Bearer " + String(githubToken));
+
+    // Tworzenie JSON i kodowanie do Base64
+    String jsonData = "{\"sender\": \"" + String(sender) + "\", \"message\": \"" + message + "\"}";
+    String contentBase64 = encodeBase64(jsonData);
+    String body = "{\"message\": \"Update message.json\", \"content\": \"" + contentBase64 + "\"}";
+
+    // Wysłanie zapytania
+    int httpResponseCode = http.PUT(body);
+
+    if (httpResponseCode > 0) {
+      Serial.println("Wiadomość wysłana. Kod HTTP: " + String(httpResponseCode));
+    } else {
+      Serial.println("Błąd wysyłania wiadomości. Kod: " + String(httpResponseCode));
     }
 
-    // Nasłuchiwanie, gdy nic nie wysyłamy
-    if (!messageSent) {
-        receiveMessage();
-        delay(10000); // Odbieranie co 10 sekund
+    http.end();
+  } else {
+    Serial.println("Brak połączenia z WiFi!");
+  }
+}
+
+
+// Funkcja do odbierania wiadomości z serwera
+void receiveMessage() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+
+    // Pobranie danych z serwera
+    int httpResponseCode = http.GET();
+
+    if (httpResponseCode > 0) {
+      String payload = http.getString();
+      Serial.println("Odebrano dane: " + payload);
+
+      // Parsowanie JSON
+      StaticJsonDocument<256> doc;
+      DeserializationError error = deserializeJson(doc, payload);
+      if (error) {
+        Serial.println("Błąd parsowania JSON");
+        return;
+      }
+
+      String sender = doc["sender"];
+      String message = doc["message"];
+
+      // Wyświetlenie wiadomości, jeśli jest nowa
+      if (message != lastMessage) {
+        Serial.println("Nowa wiadomość od " + sender + ": " + message);
+        lastMessage = message;
+      }
+    } else {
+      Serial.println("Błąd pobierania danych. Kod: " + String(httpResponseCode));
     }
+
+    http.end();
+  } else {
+    Serial.println("Brak połączenia z WiFi!");
+  }
 }
